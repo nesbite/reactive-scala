@@ -1,4 +1,4 @@
-package reactive2
+package ownFSM
 
 import akka.actor.{Actor, ActorRef, ActorSystem, FSM, Props}
 import akka.event.LoggingReceive
