@@ -78,7 +78,8 @@ class Auction(val auctionName:String) extends FSM[AuctionState, AuctionData] {
       auctionSearch ! AuctionSearch.Register
       println("\t[" + self.path.name + "]" + "[" + self.path.parent.name + "]" + "Item re-listed. Auction state changed to 'Activated'")
       goto(AuctionActivated) using Initialized(value, buyer, seller, buyers)
-    case Event(Delete, Initialized(_,_,_,_)) =>
+    case Event(Delete, Initialized(_,_,seller,_)) =>
+      seller ! Seller.Expired(auctionName)
       println("\t[" + self.path.name + "]" + "[" + self.path.parent.name + "]" + " DeleteTimer expired. Terminating...")
       stop()
   }
@@ -223,6 +224,7 @@ class Buyer() extends FSM[BuyerState, BuyerData] {
 
 object Seller {
   case class Sold(auctionName:String, amount:BigInt, buyer: ActorRef)
+  case class Expired(auctionName:String)
   case object Sell
 }
 
@@ -232,7 +234,8 @@ class Seller(auctions: List[String]) extends Actor {
   def receive = LoggingReceive {
     case Sold(auctionName, amount, buyer) =>
       println("\t[" + self.path.name + "]" + "You sold " + auctionName + " for " + amount + " to " + buyer.path.name)
-
+    case Expired(auctionName) =>
+      println("\t[" + self.path.name + "]" + auctionName + "expired with no offers")
     case Sell =>
       for(i <- auctions.indices) {
         val auction = context.actorOf(Props(new Auction(auctions(i))), auctions(i).toString.replace(" ", "_"))
