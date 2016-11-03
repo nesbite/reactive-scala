@@ -1,4 +1,4 @@
-package akkaFSM
+package pl.edu.agh.reactive.ownFSM
 
 import akka.actor.{Actor, ActorRef, ActorSystem, FSM, Props}
 import akka.event.LoggingReceive
@@ -8,17 +8,6 @@ import scala.concurrent.duration._
 import ExecutionContext.Implicits.global
 import scala.util.Random
 
-sealed trait State
-case object Init extends State
-case object Created extends State
-case object Activated extends State
-case object Ignored extends State
-case object Sold extends State
-
-sealed trait Data
-case object Uninitialized extends Data
-final case class Initialized(value:BigInt, buyer:ActorRef) extends Data
-
 object Auction {
   case class Bid(from: ActorRef, amount: BigInt)
   case object Create
@@ -27,60 +16,50 @@ object Auction {
   case object ReList
 }
 
-class Auction(itemName:String) extends FSM[State, Data] {
+
+class Auction(itemName:String) extends Actor {
   import Auction._
 
-  startWith(Init, Uninitialized)
+  var value = BigInt(0)
+  var buyer:ActorRef = context.actorOf(Props[Buyer], "childName")
 
-  when(Init){
-    case Event(Create, Uninitialized) =>
+  def receive = init
+
+  def init:Receive = LoggingReceive {
+    case Create =>
       println("\t[" + self.path.name + "]" + " state changed to 'Created'")
       val bidTimer = 5000 milliseconds
 
       println("\t[" + self.path.name + "]" + " BidTimer set to " + bidTimer)
       context.system.scheduler.scheduleOnce(bidTimer, self, Expire)
-      goto(Created) using Initialized(0, context.actorOf(Props[Buyer], "tempBuyer"))
+      context become created
 
   }
 
-  when(Created){
-    case Event(Bid(from, amount), Initialized(value, buyer)) =>
-      if(amount > value){
-        println("\t[" + self.path.name + "]" + "Bid received: " + amount + " from " + from.path.name)
-        println("\t[" + self.path.name + "]" + " state changed to 'Activated'")
-        goto(Activated) using Initialized(amount, from)
-      } else {
-        stay
-      }
-    case Event(Expire, _) =>
+  def created:Receive = LoggingReceive {
+    case Bid(from, amount) if amount > value =>
+      println("\t[" + self.path.name + "]" + "Bid received: " + amount + " from " + from.path.name)
+      println("\t[" + self.path.name + "]" + " state changed to 'Activated'")
+      buyer = from
+      value = amount
+      context become activated
+    case Expire =>
       println("\t[" + self.path.name + "]" + " expired with no offers")
       println("\t[" + self.path.name + "]" + " state changed to 'Ignored'")
       val deleteTimer = 1000 milliseconds
 
       println("\t[" + self.path.name + "]" + "DeleteTimer set to " + deleteTimer)
       context.system.scheduler.scheduleOnce(deleteTimer, self, Delete)
-      goto(Ignored)
+      context become ignored
   }
 
-  when(Ignored){
-    case Event(ReList, Initialized(buyer, value)) =>
-      println("\t[" + self.path.name + "]" + "Item re-listed. Auction state changed to 'Activated'")
-      goto(Activated) using Initialized(buyer, value)
-    case Event(Delete, _) =>
-      println("\t[" + self.path.name + "]" + " DeleteTimer expired. Terminating...")
-      stop()
-  }
+  def activated:Receive = LoggingReceive {
+    case Bid(from, amount) if amount > value =>
+      println("\t[" + self.path.name + "]" + "Bid received: " + amount + " from " + from.path.name)
+      buyer = from
+      value = amount
 
-  when(Activated){
-    case Event(Bid(from, amount), Initialized(value, buyer)) =>
-      if(amount > value){
-        println("\t[" + self.path.name + "]" + "Bid received: " + amount + " from " + from.path.name)
-        stay using Initialized(amount, from)
-      } else {
-        println("\t[" + self.path.name + "]" + "Bid(" + amount + ") lower than current highest(" + value + ") from " + from.path.name)
-        stay using Initialized(value, buyer)
-      }
-    case Event(Expire, Initialized(value, buyer)) =>
+    case Expire =>
       println("\t[" + self.path.name + "]" + " Auction finished. " + itemName + " sold to " + buyer.path.name + " for " + value)
       println("\t[" + self.path.name + "]" + " state changed to 'Sold'")
       buyer ! Buyer.Won(itemName, value)
@@ -88,22 +67,23 @@ class Auction(itemName:String) extends FSM[State, Data] {
 
       println("\t[" + self.path.name + "]" + "DeleteTimer set to " + deleteTimer)
       context.system.scheduler.scheduleOnce(deleteTimer, self, Delete)
-      goto(Sold) using Initialized(value, buyer)
+      context become sold
   }
 
-  when(Sold){
-    case Event(Delete, _) =>
+  def ignored:Receive = LoggingReceive {
+    case Delete =>
       println("\t[" + self.path.name + "]" + " DeleteTimer expired. Terminating...")
-      stop()
+      context.system.terminate
+    case ReList =>
+      println("\t[" + self.path.name + "]" + "Item re-listed. Auction state changed to 'Activated'")
+      context become activated
   }
 
-  onTermination {
-    case StopEvent(FSM.Normal, state, data)         => context.system.terminate
-    case StopEvent(FSM.Shutdown, state, data)       => context.system.terminate
-    case StopEvent(FSM.Failure(cause), state, data) => context.system.terminate
+  def sold:Receive = LoggingReceive {
+    case Delete =>
+      println("\t[" + self.path.name + "]" + " DeleteTimer expired. Terminating...")
+      context.system.terminate
   }
-
-  initialize()
 
 }
 object Buyer {
@@ -127,7 +107,7 @@ class Buyer(auctions: List[ActorRef]) extends Actor {
 //      auction ! Auction.Bid(self, amount)
     case Bid =>
       for(i <- 0 to 4) {
-        val auction = auctions(Random.nextInt(auctions.length))
+        val auction = auctions(Random.nextInt(auctions.length-1))
         val amount = Random.nextInt(400)
         println("\t[" + self.path.name + "]" + "Bidding in " + auction.path.name + " for " + amount)
         auction ! Auction.Bid(self, amount)
@@ -169,6 +149,7 @@ class AuctionSystem extends Actor{
 object AuctionApp extends App {
   val system = ActorSystem("Reactive2")
   val auctionSystemActor = system.actorOf(Props[AuctionSystem], "mainActor")
+
 
   auctionSystemActor ! AuctionSystem.Start
   Await.result(system.whenTerminated, Duration.Inf)
