@@ -97,8 +97,8 @@ class Auction() extends FSM[AuctionState, AuctionData] {
         var buyersList = buyers
         if(!buyers.contains(from)){
           buyersList = List(from) ::: buyers
+          from ! Buyer.OfferRaised(value)
         }
-        from ! Buyer.OfferRaised(value)
 
         stay using AuctionDataActivated(auctionName, value, buyer, seller, buyersList)
       }
