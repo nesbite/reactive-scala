@@ -54,6 +54,7 @@ class Buyer() extends FSM[BuyerState, BuyerData] {
     case Event(OfferRaised(value), BuyerDataInitialized(maxOffer)) =>
 //      println("\t[" + self.path.name + "]" + "OfferRaised received - value = " + value)
       if(value + 10 <= maxOffer){
+        Thread.sleep(1000)
 //        println("\t[" + self.path.name + "]" + "Bidding in " + sender.path.name + " for " + (value + 10))
         sender ! Auction.Bid(self, value + 10)
       }
