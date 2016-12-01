@@ -41,32 +41,32 @@ class Buyer() extends FSM[BuyerState, BuyerData] {
 
   when(BuyerWaitForAuctions, stateTimeout = 5.seconds){
     case Event(Auctions(auctions), BuyerDataInitialized(maxOffer)) =>
-//      println("\t[" + self.path.name + "]" + "[AUCTIONS LIST]"+auctions.toString)
+//      println(s"\t[${self.path.name}][AUCTIONS LIST] ${auctions.toString}")
       if(auctions.nonEmpty){
         for(auction <- auctions){
           val amount = Random.nextInt(maxOffer.intValue())
-//          println("\t[" + self.path.name + "]" + "[FIRST_BID]Bidding in " + auction.path.name + " for " + amount)
+//          println(s"\t[${self.path.name}][FIRST_BID]Bidding in ${auction.path.name} for $amount")
           auction ! Auction.Bid(amount)
         }
       }
       stay using BuyerDataInitialized(maxOffer)
 
     case Event(OfferRaised(value), BuyerDataInitialized(maxOffer)) =>
-//      println("\t[" + self.path.name + "]" + " OfferRaised received - value = " + value)
+//      println(s"\t[${self.path.name}] OfferRaised received - value = $value")
       if(value + 10 <= maxOffer){
-//        println("\t[" + self.path.name + "]" + " Bidding in " + sender.path.name + " for " + (value + 10))
+//        println(s"\t[${self.path.name}] Bidding in ${sender.path.name} for ${value + 10}")
         sender ! Auction.Bid(value + 10)
 //        Thread.sleep(1000)
       }
       stay using BuyerDataInitialized(maxOffer)
 
     case Event(Lost(auctionName), BuyerDataInitialized(maxOffer)) =>
-      println("\t[" + self.path.name + "]" + " You lost " + auctionName)
+      println(s"\t[${self.path.name}] You lost $auctionName")
       //      goto(BuyerInitState) using BuyerDataUninitialized
       stay using BuyerDataInitialized(maxOffer)
 
     case Event(Won(auctionName, amount), BuyerDataInitialized(maxOffer)) =>
-      println("\t[" + self.path.name + "]" + " You won " + auctionName + " for " + amount)
+      println(s"\t[${self.path.name}] You won $auctionName for $amount")
       //      goto(BuyerInitState) using BuyerDataUninitialized
       stay using BuyerDataInitialized(maxOffer)
     case Event(StateTimeout, _) =>

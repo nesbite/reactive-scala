@@ -11,18 +11,26 @@ object Seller {
 
 class Seller(auctions: List[String], auctionFactory: (String) => ActorRef) extends Actor {
   import Seller._
-
+  var timer:Long = 0
   def receive = LoggingReceive {
     case Sold(auctionName, amount, buyer) =>
-      println("\t[" + self.path.name + "]" + " You sold " + auctionName + " for " + amount + " to " + buyer)
+      println(s"\t[${self.path.name}] You sold $auctionName for $amount to $buyer")
     case Expired(auctionName) =>
-      println("\t[" + self.path.name + "] " + auctionName + "expired with no offers")
+      println(s"\t[${self.path.name}] $auctionName expired with no offers")
     case Sell =>
+      var time = System.currentTimeMillis()
+      println(s"\t[${self.path.name}] Creating auctions: $time")
+      timer = time
       for(i <- auctions.indices) {
         val auction = auctionFactory(auctions(i))
 //        val auction = context.actorOf(Props[Auction], auctions(i).replace(" ", "_"))
         auction ! Auction.Create
-//        println("\t[" + self.path.name + "]" + "Selling " + auctions(i))
+//        println(s"\t[${self.path.name}] Selling ${auctions(i)}")
       }
+      println("After Creating auctions")
+    case "Done" =>
+      var time = System.currentTimeMillis()
+      println(s"\t[${self.path.name}] Auction [${sender.path.name}] created: $time, execution time: ${time - timer}")
+
   }
 }

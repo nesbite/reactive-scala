@@ -1,10 +1,10 @@
 package pl.edu.agh.reactive.akkaFSM
 
-import akka.actor.{ActorPath, ActorRef, Cancellable, FSM}
-import akka.persistence.SnapshotOffer
+import akka.actor.{ActorPath, ActorRef, Cancellable}
+import akka.event.LoggingReceive
+import akka.persistence.RecoveryCompleted
 import akka.persistence.fsm.PersistentFSM
 import akka.persistence.fsm.PersistentFSM.FSMState
-import akka.persistence.fsm.PersistentFSM._
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent._
@@ -64,9 +64,13 @@ class Auction(auctionName:String) extends PersistentFSM [AuctionState, AuctionDa
 
   when(AuctionInitState){
     case Event(Create, AuctionDataUninitialized) =>
-//      println("\t[" + self.path.name + "]" + " state changed to 'Created'")
-//      println("\t[" + self.path.name + "]" + " BidTimer set to " + bidTimer)
-      goto(AuctionCreated) applying AuctionEventImpl(AuctionDataInitialized(0, sender.path, 0))
+//      println(s"\t[${self.path.name}] state changed to 'Created'")
+//      println(s"\t[${self.path.name}] BidTimer set to $bidTimer")
+      goto(AuctionCreated) applying AuctionEventImpl(AuctionDataInitialized(0, sender.path, 0)) andThen {
+        case _ =>
+          sender ! "Done"
+      }
+
     case Event(_, _) =>
       stay
   }
@@ -74,8 +78,8 @@ class Auction(auctionName:String) extends PersistentFSM [AuctionState, AuctionDa
   when(AuctionCreated){
     case Event(Bid(amount), AuctionDataInitialized(value, seller, timeout)) =>
       if(amount > value){
-        println("\t[" + self.path.name + "]" + "[" + self.path.parent.name + "]" + " Bid received: " + amount + " from " + sender.path.name)
-//        println("\t[" + self.path.name + "]" + " state changed to 'Activated'")
+        println(s"\t[${self.path.name}][" + self.path.parent.name + "]" + " Bid received: " + amount + " from " + sender.path.name)
+//        println(s"\t[${self.path.name}] state changed to 'Activated'")
 //        val buyersList =  List(from)
         goto(AuctionActivated) applying AuctionEventImpl(AuctionDataActivated(amount, sender.path, seller, List(sender.path), 0))
       } else {
@@ -89,8 +93,8 @@ class Auction(auctionName:String) extends PersistentFSM [AuctionState, AuctionDa
         buyersList = sender.path :: buyersList
       }
       if(amount > value){
-        println("\t[" + self.path.name + "]" + "[" + self.path.parent.name + "]" + " Bid received: " + amount + " from " + sender.path.name)
-        //        println("\t[" + self.path.name + "]" + " state changed to 'Activated'")
+        println(s"\t[${self.path.name}][" + self.path.parent.name + "]" + " Bid received: " + amount + " from " + sender.path.name)
+        //        println(s"\t[${self.path.name}] state changed to 'Activated'")
         goto(AuctionActivated) applying AuctionEventImpl(AuctionDataActivated(amount, sender.path, seller, buyersList, 0))
       } else {
         if(sender.path != buyer) {
@@ -104,11 +108,11 @@ class Auction(auctionName:String) extends PersistentFSM [AuctionState, AuctionDa
       }
 
     case Event(Expire, AuctionDataInitialized(value, seller, timeout)) =>
-//      println("\t[" + self.path.name + "]" + " expired with no offers")
-//      println("\t[" + self.path.name + "]" + " state changed to 'Ignored'")
+//      println(s"\t[${self.path.name}] expired with no offers")
+//      println(s"\t[${self.path.name}] state changed to 'Ignored'")
       val auctionSearch = getAuctionSearchActor
       auctionSearch ! AuctionSearch.Unregister
-//      println("\t[" + self.path.name + "]" + "DeleteTimer set to " + deleteTimer)
+//      println(s"\t[${self.path.name}] DeleteTimer set to $deleteTimer")
       goto(AuctionIgnored) applying AuctionEventImpl(AuctionDataInitialized(value, seller, 0))
 
     case Event(_, _) =>
@@ -120,11 +124,11 @@ class Auction(auctionName:String) extends PersistentFSM [AuctionState, AuctionDa
       val auctionSearch = getAuctionSearchActor
       timer.cancel()
       auctionSearch ! AuctionSearch.Register(auctionName)
-      println("\t[" + self.path.name + "]" + "[" + self.path.parent.name + "]" + " Item re-listed. Auction state changed to 'Created'")
+      println(s"\t[${self.path.name}][" + self.path.parent.name + "]" + " Item re-listed. Auction state changed to 'Created'")
       goto(AuctionCreated) applying AuctionEventImpl(AuctionDataInitialized(0, seller, 0))
     case Event(Delete, AuctionDataInitialized(_, seller, timeout)) =>
       context.actorSelection(seller) ! Seller.Expired(auctionName)
-      println("\t[" + self.path.name + "]" + "[" + self.path.parent.name + "]" + " DeleteTimer expired. Terminating...")
+      println(s"\t[${self.path.name}][" + self.path.parent.name + "]" + " DeleteTimer expired. Terminating...")
       deleteMessages(Long.MaxValue)
       stop()
     case Event(_, _) =>
@@ -138,7 +142,14 @@ class Auction(auctionName:String) extends PersistentFSM [AuctionState, AuctionDa
         buyersList = sender.path :: buyersList
       }
       if(amount > value){
-        println("\t[" + self.path.name + "]" + "[" + self.path.parent.name + "]" + " Bid received: " + amount + " from " + sender.path.name)
+        /*******************
+        //AUCTION TERMINATION
+        *******************/
+//        if(amount > 500){
+//          context.system.terminate()
+//        }
+
+        println(s"\t[${self.path.name}][${self.path.parent.name}] Bid received: $amount from ${sender.path.name}")
         for(b <- buyersList.filter(_ != sender.path)){
           context.actorSelection(b) ! Buyer.OfferRaised(amount)
         }
@@ -154,14 +165,14 @@ class Auction(auctionName:String) extends PersistentFSM [AuctionState, AuctionDa
         }
       }
     case Event(Expire, AuctionDataActivated(value, buyer, seller, buyers, timeout)) =>
-      println("\t[" + self.path.name + "]" + "[" + self.path.parent.name + "]" + " Auction finished. " + auctionName + " sold to " + buyer.name + " for " + value)
-//      println("\t[" + self.path.name + "]" + " state changed to 'Sold'")
+      println(s"\t[${self.path.name}][${self.path.parent.name}] Auction finished. $auctionName sold to ${buyer.name} for $value")
+//      println(s"\t[${self.path.name}] state changed to 'Sold'")
       context.actorSelection(buyer) ! Buyer.Won(auctionName, value)
       for( b <- buyers.filter(_ != buyer)){
         context.actorSelection(b) ! Buyer.Lost(auctionName)
       }
       context.actorSelection(seller) ! Seller.Sold(auctionName, value, buyer.name)
-//      println("\t[" + self.path.name + "]" + "DeleteTimer set to " + deleteTimer)
+//      println(s"\t[${self.path.name}] DeleteTimer set to $deleteTimer)
       context.actorSelection("../AuctionSearch") ! AuctionSearch.Unregister
 
       goto(AuctionSold) applying AuctionEventImpl(AuctionDataActivated(value, buyer, seller, buyers, 0))
@@ -171,7 +182,7 @@ class Auction(auctionName:String) extends PersistentFSM [AuctionState, AuctionDa
 
   when(AuctionSold){
     case Event(Delete, AuctionDataActivated(value, buyer, seller, buyers, timeout)) =>
-//      println("\t[" + self.path.name + "]" + "[" + self.path.parent.name + "]" + " DeleteTimer expired. Terminating...")
+//      println(s"\t[${self.path.name}][${self.path.parent.name}] DeleteTimer expired. Terminating...")
       deleteMessages(Long.MaxValue)
       stop()
     case Event(_, _) =>
@@ -190,11 +201,11 @@ class Auction(auctionName:String) extends PersistentFSM [AuctionState, AuctionDa
   onTransition {
     case _ -> (AuctionSold | AuctionIgnored)  =>
       stateDuration = System.currentTimeMillis()
-      println("\tDeleteTimer set to " + deleteTimer + " milliseconds")
+      println(s"\tDeleteTimer set to $deleteTimer milliseconds")
       timer = context.system.scheduler.scheduleOnce(deleteTimer.milliseconds, self, Delete)
     case _ -> (AuctionCreated)  =>
       stateDuration = System.currentTimeMillis()
-      println("\tBidTimer set to " + bidTimer + " milliseconds")
+      println(s"\tBidTimer set to $bidTimer milliseconds")
       timer = context.system.scheduler.scheduleOnce(bidTimer.milliseconds, self, Expire)
     case _ -> _ =>
       stateDuration = System.currentTimeMillis()
@@ -208,13 +219,13 @@ class Auction(auctionName:String) extends PersistentFSM [AuctionState, AuctionDa
       case AuctionEventImpl(data:AuctionData) =>
       data match {
         case AuctionDataUninitialized =>
-          println("\t[" +self.path.name + "] Data set to AuctionDataUninitialized")
+          println(s"\t[${self.path.name}] Data set to AuctionDataUninitialized")
         case AuctionDataInitialized(value, seller, stateTime) =>
           setNewTimer(stateTime)
-          println("\t[" +self.path.name + s"] Data set to: AuctionDataInitialized($value, ${seller.name}, $stateTime)")
+          println(s"\t[${self.path.name}] Data set to: AuctionDataInitialized($value, ${seller.name}, $stateTime)")
         case AuctionDataActivated(value, buyer, seller, buyers, stateTime) =>
           setNewTimer(stateTime)
-          println("\t[" +self.path.name + s"] Data set to AuctionDataActivated($value, ${buyer.name}, ${seller.name}, ${buyers.map(b => b.name)}, $stateTime) ")
+          println(s"\t[${self.path.name}] Data set to AuctionDataActivated($value, ${buyer.name}, ${seller.name}, ${buyers.map(b => b.name)}, $stateTime) ")
       }
         data
     }
@@ -226,12 +237,31 @@ class Auction(auctionName:String) extends PersistentFSM [AuctionState, AuctionDa
     }
     this.stateName match {
       case AuctionCreated | AuctionActivated =>
-        println("\tBidTimer set to " + (bidTimer - stateTime) + " milliseconds")
+        println(s"\t[${self.path.name}] BidTimer set to ${bidTimer - stateTime} milliseconds")
         timer = context.system.scheduler.scheduleOnce((bidTimer - stateTime).milliseconds, self, Expire)
-      case AuctionInitState | AuctionIgnored | AuctionSold =>
+      case AuctionIgnored | AuctionSold =>
+        println(s"\t[${self.path.name}] DeleteTimer set to ${deleteTimer - stateTime} milliseconds")
+        timer = context.system.scheduler.scheduleOnce((deleteTimer - stateTime).milliseconds, self, Delete)
+      case AuctionInitState =>
     }
   }
 
+  override def receiveRecover: Receive = LoggingReceive {
+    case RecoveryCompleted =>
+      this.stateData match {
+        case AuctionDataInitialized(value, seller, stateTime) =>
+          stateDuration = System.currentTimeMillis() - stateTime
+          context.actorSelection(seller) ! "Done"
+        case AuctionDataActivated(value, buyer, seller, buyers, stateTime) =>
+          stateDuration = System.currentTimeMillis() - stateTime
+          context.actorSelection(seller) ! "Done"
+        case _ =>
+          stateDuration = System.currentTimeMillis()
+      }
+
+    case a:Any =>
+      super.receiveRecover.apply(a)
+  }
 }
 
 
