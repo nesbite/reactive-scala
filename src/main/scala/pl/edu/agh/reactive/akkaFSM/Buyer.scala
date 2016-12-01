@@ -39,7 +39,7 @@ class Buyer() extends FSM[BuyerState, BuyerData] {
 
   }
 
-  when(BuyerWaitForAuctions, stateTimeout = 5.seconds){
+  when(BuyerWaitForAuctions, stateTimeout = 10.seconds){
     case Event(Auctions(auctions), BuyerDataInitialized(maxOffer)) =>
 //      println(s"\t[${self.path.name}][AUCTIONS LIST] ${auctions.toString}")
       if(auctions.nonEmpty){

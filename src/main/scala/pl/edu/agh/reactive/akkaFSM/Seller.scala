@@ -18,8 +18,8 @@ class Seller(auctions: List[String], auctionFactory: (String) => ActorRef) exten
     case Expired(auctionName) =>
       println(s"\t[${self.path.name}] $auctionName expired with no offers")
     case Sell =>
-      var time = System.currentTimeMillis()
-      println(s"\t[${self.path.name}] Creating auctions: $time")
+      val time = System.currentTimeMillis()
+//      println(s"\t[${self.path.name}] Creating auctions: $time")
       timer = time
       for(i <- auctions.indices) {
         val auction = auctionFactory(auctions(i))
@@ -27,7 +27,7 @@ class Seller(auctions: List[String], auctionFactory: (String) => ActorRef) exten
         auction ! Auction.Create
 //        println(s"\t[${self.path.name}] Selling ${auctions(i)}")
       }
-      println("After Creating auctions")
+//      println("After Creating auctions")
     case "Done" =>
       var time = System.currentTimeMillis()
       println(s"\t[${self.path.name}] Auction [${sender.path.name}] created: $time, execution time: ${time - timer}")

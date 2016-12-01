@@ -2,6 +2,7 @@ package pl.edu.agh.reactive.akkaFSM
 
 import akka.actor.{Actor, ActorRef, ActorRefFactory, ActorSystem, Props}
 import akka.event.LoggingReceive
+import com.typesafe.config.ConfigFactory
 
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
@@ -21,14 +22,15 @@ class AuctionSystem extends Actor{
 
   def receive = LoggingReceive {
     case Start =>
-      println("Creating auctionSearch")
+//      println("Creating auctionSearch")
       val auctionSearch = context.actorOf(Props[AuctionSearch], "AuctionSearch")
+      val notifier = context.actorOf(Props[Notifier], "notifier")
 
       val auctionList1:List[String] = List("audi a6 diesel manual", "ford focus gas manual", "opel astra diesel manual", "citroen c3 petrol auto")
 //      val auctionList1:List[String] = List("audi a6 diesel manual")
       val auctionList2:List[String] = List("toyota rav4 petrol manual", "honda accord diesel manual", "citroen berlingo petrol manual")
 //      val auctionList2:List[String] = List("toyota rav4 petrol manual")
-      println("Creating sellers")
+//      println("Creating sellers")
       val seller1 = context.actorOf(Props(new Seller(auctionList1, auctionFactory)), "seller1")
       val seller2 = context.actorOf(Props(new Seller(auctionList2, auctionFactory)), "seller2")
 
@@ -36,7 +38,7 @@ class AuctionSystem extends Actor{
       seller1 ! Seller.Sell
       seller2 ! Seller.Sell
 
-      println("Creating buyers")
+//      println("Creating buyers")
       Thread.sleep(4000)
       //      println()
       val buyer1 = context.actorOf(Props[Buyer], "buyer1")
@@ -57,10 +59,18 @@ class AuctionSystem extends Actor{
 }
 
 object AuctionApp extends App {
-  val system = ActorSystem("Reactive2")
-  val auctionSystemActor = system.actorOf(Props[AuctionSystem], "mainActor")
+  val config = ConfigFactory.load()
+  val serverSystem = ActorSystem("AuctionPublisher", config.getConfig("serverapp").withFallback(config))
+//  val auctionPublisher = serverSystem.actorOf(Props[AuctionPublisher], "auctionPublisher")
+
+  val clientSystem = ActorSystem("Reactive5", config.getConfig("clientapp").withFallback(config))
+  val auctionSystemActor = clientSystem.actorOf(Props[AuctionSystem], "mainActor")
 
   auctionSystemActor ! AuctionSystem.Start
-  Await.result(system.whenTerminated, Duration.Inf)
+
+  Await.result(clientSystem.whenTerminated, Duration.Inf)
+
+  serverSystem.terminate()
+  Await.result(serverSystem.whenTerminated, Duration.Inf)
 }
 

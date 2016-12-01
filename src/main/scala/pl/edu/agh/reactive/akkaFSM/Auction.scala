@@ -51,7 +51,7 @@ class Auction(auctionName:String) extends PersistentFSM [AuctionState, AuctionDa
   var stateDuration: Long = 0
   var timer: Cancellable = null
   val bidTimer: Long = 5000
-  val deleteTimer: Long = 8000
+  val deleteTimer: Long = 3000
 
   override def persistenceId = "persistent-toggle-fsm-id-" + auctionName.replace(" ", "-")
   override def domainEventClassTag: ClassTag[AuctionEvent] = classTag[AuctionEvent]
@@ -78,7 +78,7 @@ class Auction(auctionName:String) extends PersistentFSM [AuctionState, AuctionDa
   when(AuctionCreated){
     case Event(Bid(amount), AuctionDataInitialized(value, seller, timeout)) =>
       if(amount > value){
-        println(s"\t[${self.path.name}][" + self.path.parent.name + "]" + " Bid received: " + amount + " from " + sender.path.name)
+//        println(s"\t[${self.path.name}][" + self.path.parent.name + "]" + " Bid received: " + amount + " from " + sender.path.name)
 //        println(s"\t[${self.path.name}] state changed to 'Activated'")
 //        val buyersList =  List(from)
         goto(AuctionActivated) applying AuctionEventImpl(AuctionDataActivated(amount, sender.path, seller, List(sender.path), 0))
@@ -93,7 +93,7 @@ class Auction(auctionName:String) extends PersistentFSM [AuctionState, AuctionDa
         buyersList = sender.path :: buyersList
       }
       if(amount > value){
-        println(s"\t[${self.path.name}][" + self.path.parent.name + "]" + " Bid received: " + amount + " from " + sender.path.name)
+//        println(s"\t[${self.path.name}][" + self.path.parent.name + "]" + " Bid received: " + amount + " from " + sender.path.name)
         //        println(s"\t[${self.path.name}] state changed to 'Activated'")
         goto(AuctionActivated) applying AuctionEventImpl(AuctionDataActivated(amount, sender.path, seller, buyersList, 0))
       } else {
@@ -149,7 +149,7 @@ class Auction(auctionName:String) extends PersistentFSM [AuctionState, AuctionDa
 //          context.system.terminate()
 //        }
 
-        println(s"\t[${self.path.name}][${self.path.parent.name}] Bid received: $amount from ${sender.path.name}")
+//        println(s"\t[${self.path.name}][${self.path.parent.name}] Bid received: $amount from ${sender.path.name}")
         for(b <- buyersList.filter(_ != sender.path)){
           context.actorSelection(b) ! Buyer.OfferRaised(amount)
         }
@@ -201,11 +201,11 @@ class Auction(auctionName:String) extends PersistentFSM [AuctionState, AuctionDa
   onTransition {
     case _ -> (AuctionSold | AuctionIgnored)  =>
       stateDuration = System.currentTimeMillis()
-      println(s"\tDeleteTimer set to $deleteTimer milliseconds")
+//      println(s"\tDeleteTimer set to $deleteTimer milliseconds")
       timer = context.system.scheduler.scheduleOnce(deleteTimer.milliseconds, self, Delete)
     case _ -> (AuctionCreated)  =>
       stateDuration = System.currentTimeMillis()
-      println(s"\tBidTimer set to $bidTimer milliseconds")
+//      println(s"\tBidTimer set to $bidTimer milliseconds")
       timer = context.system.scheduler.scheduleOnce(bidTimer.milliseconds, self, Expire)
     case _ -> _ =>
       stateDuration = System.currentTimeMillis()
@@ -219,13 +219,14 @@ class Auction(auctionName:String) extends PersistentFSM [AuctionState, AuctionDa
       case AuctionEventImpl(data:AuctionData) =>
       data match {
         case AuctionDataUninitialized =>
-          println(s"\t[${self.path.name}] Data set to AuctionDataUninitialized")
+//          println(s"\t[${self.path.name}] Data set to AuctionDataUninitialized")
         case AuctionDataInitialized(value, seller, stateTime) =>
           setNewTimer(stateTime)
-          println(s"\t[${self.path.name}] Data set to: AuctionDataInitialized($value, ${seller.name}, $stateTime)")
+//          println(s"\t[${self.path.name}] Data set to: AuctionDataInitialized($value, ${seller.name}, $stateTime)")
         case AuctionDataActivated(value, buyer, seller, buyers, stateTime) =>
+          context.actorSelection("../notifier") ! Notify(auctionName, buyer, value)
           setNewTimer(stateTime)
-          println(s"\t[${self.path.name}] Data set to AuctionDataActivated($value, ${buyer.name}, ${seller.name}, ${buyers.map(b => b.name)}, $stateTime) ")
+//          println(s"\t[${self.path.name}] Data set to AuctionDataActivated($value, ${buyer.name}, ${seller.name}, ${buyers.map(b => b.name)}, $stateTime) ")
       }
         data
     }
@@ -237,10 +238,10 @@ class Auction(auctionName:String) extends PersistentFSM [AuctionState, AuctionDa
     }
     this.stateName match {
       case AuctionCreated | AuctionActivated =>
-        println(s"\t[${self.path.name}] BidTimer set to ${bidTimer - stateTime} milliseconds")
+//        println(s"\t[${self.path.name}] BidTimer set to ${bidTimer - stateTime} milliseconds")
         timer = context.system.scheduler.scheduleOnce((bidTimer - stateTime).milliseconds, self, Expire)
       case AuctionIgnored | AuctionSold =>
-        println(s"\t[${self.path.name}] DeleteTimer set to ${deleteTimer - stateTime} milliseconds")
+//        println(s"\t[${self.path.name}] DeleteTimer set to ${deleteTimer - stateTime} milliseconds")
         timer = context.system.scheduler.scheduleOnce((deleteTimer - stateTime).milliseconds, self, Delete)
       case AuctionInitState =>
     }
