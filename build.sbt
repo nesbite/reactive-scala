@@ -1,4 +1,4 @@
-name := """reactive-lab4"""
+name := """reactive-lab5"""
 
 version := "1.1"
 
