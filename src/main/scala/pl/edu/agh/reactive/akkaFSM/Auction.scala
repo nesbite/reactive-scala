@@ -233,6 +233,7 @@ class Auction(auctionName:String) extends PersistentFSM [AuctionState, AuctionDa
 
   override def receiveRecover: Receive = LoggingReceive {
     case RecoveryCompleted =>
+      println("RECOVERY COMPLETED")
       this.stateData match {
         case AuctionDataInitialized(value, seller, stateTime) =>
           stateDuration = System.currentTimeMillis() - stateTime
