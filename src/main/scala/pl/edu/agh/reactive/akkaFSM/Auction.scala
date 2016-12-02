@@ -56,9 +56,9 @@ class Auction(auctionName:String) extends PersistentFSM [AuctionState, AuctionDa
   override def persistenceId = "persistent-toggle-fsm-id-" + auctionName.replace(" ", "-")
   override def domainEventClassTag: ClassTag[AuctionEvent] = classTag[AuctionEvent]
 
-  def getAuctionSearchActor = Await.result(context.actorSelection("../AuctionSearch").resolveOne()(1.seconds), 1.seconds)
+  def getMasterSearchActor = Await.result(context.actorSelection("../MasterSearch").resolveOne()(1.seconds), 1.seconds)
 
-  context.actorSelection("../AuctionSearch") ! AuctionSearch.Register(auctionName)
+  context.actorSelection("../MasterSearch") ! AuctionSearch.Register(auctionName)
 
   startWith(AuctionInitState, AuctionDataUninitialized)
 
@@ -110,7 +110,7 @@ class Auction(auctionName:String) extends PersistentFSM [AuctionState, AuctionDa
     case Event(Expire, AuctionDataInitialized(value, seller, timeout)) =>
 //      println(s"\t[${self.path.name}] expired with no offers")
 //      println(s"\t[${self.path.name}] state changed to 'Ignored'")
-      val auctionSearch = getAuctionSearchActor
+      val auctionSearch = getMasterSearchActor
       auctionSearch ! AuctionSearch.Unregister
 //      println(s"\t[${self.path.name}] DeleteTimer set to $deleteTimer")
       goto(AuctionIgnored) applying AuctionEventImpl(AuctionDataInitialized(value, seller, 0))
@@ -121,7 +121,7 @@ class Auction(auctionName:String) extends PersistentFSM [AuctionState, AuctionDa
 
   when(AuctionIgnored){
     case Event(ReList, AuctionDataInitialized(value, seller, timeout)) =>
-      val auctionSearch = getAuctionSearchActor
+      val auctionSearch = getMasterSearchActor
       timer.cancel()
       auctionSearch ! AuctionSearch.Register(auctionName)
       println(s"\t[${self.path.name}][" + self.path.parent.name + "]" + " Item re-listed. Auction state changed to 'Created'")
@@ -173,7 +173,7 @@ class Auction(auctionName:String) extends PersistentFSM [AuctionState, AuctionDa
       }
       context.actorSelection(seller) ! Seller.Sold(auctionName, value, buyer.name)
 //      println(s"\t[${self.path.name}] DeleteTimer set to $deleteTimer)
-      context.actorSelection("../AuctionSearch") ! AuctionSearch.Unregister
+      context.actorSelection("../MasterSearch") ! AuctionSearch.Unregister
 
       goto(AuctionSold) applying AuctionEventImpl(AuctionDataActivated(value, buyer, seller, buyers, 0))
     case Event(_, _) =>

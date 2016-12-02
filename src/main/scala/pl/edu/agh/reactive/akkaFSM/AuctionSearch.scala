@@ -15,16 +15,16 @@ class AuctionSearch extends Actor {
 
   def receive = LoggingReceive {
     case Auctions(keyword) =>
-      println(s"\t[${self.path.name}] Keyword $keyword received from ${sender.path.name}")
-      println(s"\t[${self.path.name}] Auctions matching keyword '$keyword': ${auctions.filter(_._2.contains(keyword)).values.toList}")
+//      println(s"\t[${self.path.name}] Keyword $keyword received from ${sender.path.name}")
+//      println(s"\t[${self.path.name}] Auctions matching keyword '$keyword': ${auctions.filter(_._2.contains(keyword)).values.toList}")
       sender ! Buyer.Auctions(auctions.filter(_._2.contains(keyword)).keys.toList)
     case Register(auctionName) =>
-      println(s"\t[${self.path.name}] Auction registered: ${sender.path.name}")
+//      println(s"\t[${self.path.name}] Auction registered: ${sender.path.name}")
       if(!auctions.keySet.contains(sender)){
         auctions += (sender -> auctionName)
       }
     case Unregister =>
-      println(s"\t[${self.path.name}] Auction unregistered: ${sender.path.name}")
+//      println(s"\t[${self.path.name}] Auction unregistered: ${sender.path.name}")
       auctions = auctions.filter(_ ne sender)
   }
 }

@@ -5,6 +5,8 @@ import akka.actor.{ActorRef, FSM}
 import scala.concurrent.Await
 import scala.concurrent.duration._
 import scala.util.Random
+import akka.pattern.ask
+import akka.util.Timeout
 
 sealed trait BuyerState
 case object BuyerInitState extends BuyerState
@@ -17,6 +19,7 @@ case class BuyerDataInitialized(maxOffer:BigInt) extends BuyerData
 object Buyer {
   case class Won(auctionName:String, amount:BigInt)
   case class Lost(auctionName:String)
+  case object BidTestScenario
   case class Bid(keyword:String, maxOffer:BigInt)
   case class Auctions(auctions:List[ActorRef])
   case class OfferRaised(value:BigInt)
@@ -26,17 +29,25 @@ class Buyer() extends FSM[BuyerState, BuyerData] {
   import Buyer._
 
 
-  def getAuctionSearchActor = Await.result(context.actorSelection("../AuctionSearch").resolveOne()(1.seconds), 1.seconds)
+  def getAuctionSearchActor = Await.result(context.actorSelection("../MasterSearch").resolveOne()(1.seconds), 1.seconds)
 
   startWith(BuyerInitState, BuyerDataUninitialized)
-
+  val numberOfAuctions: BigInt = 10000
   when(BuyerInitState){
     case Event(Bid(keyword, maxOffer), _) =>
       //      Thread.sleep(3000)
       val auctionSearch = getAuctionSearchActor
       auctionSearch ! AuctionSearch.Auctions(keyword)
       goto(BuyerWaitForAuctions) using BuyerDataInitialized(maxOffer)
-
+    case Event(BidTestScenario, _)=>
+      val auctionSearch = getAuctionSearchActor
+      implicit val timeout = Timeout(1 minute)
+      val time = System.currentTimeMillis()
+      for(i <- Range(0, numberOfAuctions.intValue(), 1)) {
+        auctionSearch ? AuctionSearch.Auctions(s"auction$i")
+      }
+      println(s"Search executed in ${System.currentTimeMillis() - time}")
+      goto(BuyerWaitForAuctions) using BuyerDataInitialized(100)
   }
 
   when(BuyerWaitForAuctions, stateTimeout = 10.seconds){
