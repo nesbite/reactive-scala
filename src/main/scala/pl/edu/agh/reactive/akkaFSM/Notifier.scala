@@ -9,7 +9,7 @@ import scala.concurrent.Await
 
 case class Notify(auctionName: String, buyer: ActorPath, price: BigInt)
 
-class Notifier extends Actor{
+class Notifier extends Actor {
   import akka.actor.OneForOneStrategy
   import akka.actor.SupervisorStrategy._
   import scala.concurrent.duration._
@@ -22,10 +22,10 @@ class Notifier extends Actor{
 
   override val supervisorStrategy =
     OneForOneStrategy(maxNrOfRetries = 10, withinTimeRange = 1.minute) {
-      case ex: ActorNotFound     =>
-        println(s"\t[Notifier] Error occurred: ${ex.getMessage}")
+      case ex: ActorNotFound =>
+        println(s"\t[Notifier] Error occurred(ActorNotFound): ${ex.getMessage}")
         Resume
-      case ex: Exception                =>
+      case ex: Exception =>
         println(s"\t[Notifier] Error occurred: ${ex.getMessage}")
         Escalate
     }

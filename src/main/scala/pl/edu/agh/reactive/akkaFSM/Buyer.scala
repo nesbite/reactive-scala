@@ -5,8 +5,6 @@ import akka.actor.{ActorRef, FSM}
 import scala.concurrent.Await
 import scala.concurrent.duration._
 import scala.util.Random
-import akka.pattern.ask
-import akka.util.Timeout
 
 sealed trait BuyerState
 case object BuyerInitState extends BuyerState
@@ -19,7 +17,6 @@ case class BuyerDataInitialized(maxOffer:BigInt) extends BuyerData
 object Buyer {
   case class Won(auctionName:String, amount:BigInt)
   case class Lost(auctionName:String)
-  case object BidTestScenario
   case class Bid(keyword:String, maxOffer:BigInt)
   case class Auctions(auctions:List[ActorRef])
   case class OfferRaised(value:BigInt)
@@ -32,54 +29,37 @@ class Buyer() extends FSM[BuyerState, BuyerData] {
   def getAuctionSearchActor = Await.result(context.actorSelection("../MasterSearch").resolveOne()(1.seconds), 1.seconds)
 
   startWith(BuyerInitState, BuyerDataUninitialized)
-  val numberOfAuctions: BigInt = 10000
   when(BuyerInitState){
     case Event(Bid(keyword, maxOffer), _) =>
-      //      Thread.sleep(3000)
       val auctionSearch = getAuctionSearchActor
       auctionSearch ! AuctionSearch.Auctions(keyword)
       goto(BuyerWaitForAuctions) using BuyerDataInitialized(maxOffer)
-    case Event(BidTestScenario, _)=>
-      val auctionSearch = getAuctionSearchActor
-      implicit val timeout = Timeout(1 minute)
-      val time = System.currentTimeMillis()
-      for(i <- Range(0, numberOfAuctions.intValue(), 1)) {
-        auctionSearch ? AuctionSearch.Auctions(s"auction$i")
-      }
-      println(s"Search executed in ${System.currentTimeMillis() - time}")
-      goto(BuyerWaitForAuctions) using BuyerDataInitialized(100)
   }
 
   when(BuyerWaitForAuctions, stateTimeout = 10.seconds){
     case Event(Auctions(auctions), BuyerDataInitialized(maxOffer)) =>
-//      println(s"\t[${self.path.name}][AUCTIONS LIST] ${auctions.toString}")
       if(auctions.nonEmpty){
         for(auction <- auctions){
           val amount = Random.nextInt(maxOffer.intValue())
-//          println(s"\t[${self.path.name}][FIRST_BID]Bidding in ${auction.path.name} for $amount")
           auction ! Auction.Bid(amount)
         }
       }
       stay using BuyerDataInitialized(maxOffer)
 
     case Event(OfferRaised(value), BuyerDataInitialized(maxOffer)) =>
-//      println(s"\t[${self.path.name}] OfferRaised received - value = $value")
       if(value + 10 <= maxOffer){
-//        println(s"\t[${self.path.name}] Bidding in ${sender.path.name} for ${value + 10}")
         sender ! Auction.Bid(value + 10)
-//        Thread.sleep(1000)
       }
       stay using BuyerDataInitialized(maxOffer)
 
     case Event(Lost(auctionName), BuyerDataInitialized(maxOffer)) =>
       println(s"\t[${self.path.name}] You lost $auctionName")
-      //      goto(BuyerInitState) using BuyerDataUninitialized
       stay using BuyerDataInitialized(maxOffer)
 
     case Event(Won(auctionName, amount), BuyerDataInitialized(maxOffer)) =>
       println(s"\t[${self.path.name}] You won $auctionName for $amount")
-      //      goto(BuyerInitState) using BuyerDataUninitialized
       stay using BuyerDataInitialized(maxOffer)
+
     case Event(StateTimeout, _) =>
       goto(BuyerInitState) using BuyerDataUninitialized
   }

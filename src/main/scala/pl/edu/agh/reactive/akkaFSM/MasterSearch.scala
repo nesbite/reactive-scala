@@ -7,9 +7,9 @@ import pl.edu.agh.reactive.akkaFSM.AuctionSearch.{Auctions, Register, Unregister
 import scala.concurrent.duration._
 
 class MasterSearch extends Actor {
-  val nbOfroutees: Int = 15
+  val numberOfRoutees: Int = 15
 
-  val routees = Vector.fill(nbOfroutees) {
+  val routees = Vector.fill(numberOfRoutees) {
     val r = context.actorOf(Props[AuctionSearch])
     context watch r
     ActorRefRoutee(r)
